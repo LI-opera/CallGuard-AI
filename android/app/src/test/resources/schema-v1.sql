@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS caller_profiles (numberToken TEXT NOT NULL PRIMARY KEY, firstSeenAt INTEGER NOT NULL, lastSeenAt INTEGER NOT NULL, callCount INTEGER NOT NULL, answeredCount INTEGER NOT NULL, rejectedCount INTEGER NOT NULL, lastDecision TEXT NOT NULL, userLabel TEXT, profileVersion INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS call_records (id TEXT NOT NULL PRIMARY KEY, numberToken TEXT NOT NULL, receivedAt INTEGER NOT NULL, repeatCount INTEGER NOT NULL, riskScore INTEGER, riskLevel TEXT NOT NULL, decision TEXT NOT NULL, matchedRules TEXT NOT NULL, fallbackUsed INTEGER NOT NULL, policyVersion TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS index_call_records_numberToken_receivedAt ON call_records(numberToken, receivedAt);
+CREATE TABLE IF NOT EXISTS rule_entries (id TEXT NOT NULL PRIMARY KEY, numberToken TEXT NOT NULL, type TEXT NOT NULL, createdAt INTEGER NOT NULL, expiresAt INTEGER, source TEXT NOT NULL, enabled INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS index_rule_entries_numberToken_type ON rule_entries(numberToken, type);

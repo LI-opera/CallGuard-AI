@@ -1,0 +1,2 @@
+# Compatibility entry requested by the project owner.
+-r requirements.txt

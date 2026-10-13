@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "total": 7,
+  "model_calls_attempted": 7,
+  "intent_correct": 7,
+  "relationship_correct": 7,
+  "action_correct": 7,
+  "false_simulated_blocks": 0,
+  "errors": 0,
+  "by_group": {
+    "colleague": {
+      "total": 3,
+      "intent_correct": 3
+    },
+    "family": {
+      "total": 1,
+      "intent_correct": 1
+    },
+    "friend": {
+      "total": 2,
+      "intent_correct": 2
+    },
+    "sales": {
+      "total": 1,
+      "intent_correct": 1
+    }
+  },
+  "failed_ids": [],
+  "raw_results": "docs\\demo-evidence\\targeted-v2-20260926.jsonl"
+}

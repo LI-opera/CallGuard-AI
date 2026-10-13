@@ -1,0 +1,35 @@
+{
+  "synthetic": true,
+  "total": 30,
+  "model_calls_attempted": 53,
+  "intent_correct": 28,
+  "action_correct": 25,
+  "false_simulated_blocks": 0,
+  "errors": 0,
+  "by_group": {
+    "colleague": {
+      "total": 5,
+      "intent_correct": 4
+    },
+    "family": {
+      "total": 10,
+      "intent_correct": 10
+    },
+    "friend": {
+      "total": 5,
+      "intent_correct": 4
+    },
+    "sales": {
+      "total": 10,
+      "intent_correct": 10
+    }
+  },
+  "failed_ids": [
+    "colleague-02",
+    "colleague-04",
+    "colleague-05",
+    "friend-04",
+    "friend-05"
+  ],
+  "raw_results": "docs\\demo-evidence\\baseline-20260926.jsonl"
+}

@@ -1,0 +1,20 @@
+.venv/
+.gradle-user-home/
+**/.gradle/
+**/build/
+**/local.properties
+.env
+.idea/
+*.iml
+*.jks
+*.keystore
+__pycache__/
+.tmp/
+android/.kotlin/
+*.obj
+*.log
+*.wav
+*.apk
+# Device captures can contain real numbers, device identifiers and call metadata.
+/docs/device-evidence/*
+!/docs/device-evidence/README.md
