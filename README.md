@@ -1,91 +1,290 @@
-# CallGuard AI
+<div align="center">
 
-CallGuard AI 是分阶段开发的安卓来电筛查实验项目。当前安卓应用为 **WP-08 通话后 AI 解释版（0.8.0-wp08）**：实时筛查由本地规则处理，手机云端 AI 默认关闭；用户确认通话结束后可手动生成解释。独立的本机网页用于**文字模拟**“AI 对话 → 意图判断 → 同一虚构号码重拨”，不接入真实电话。详见 [WP-08 实施报告](docs/wp08-implementation.md)和[文字模拟说明](server/README.md)。
+# 🛡️ CallGuard AI
 
-| 模块 | 当前边界 |
+**安卓智能来电筛查 · 本地规则负责控制，AI 负责理解**
+
+不只判断“这个号码是不是骚扰号码”，而是进一步回答“这个人为什么打电话”。
+
+![Android](https://img.shields.io/badge/Android-API%2029--36-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-UI-4285F4?logo=jetpackcompose&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Status](https://img.shields.io/badge/版本-0.8.0--wp08-6A4FA6)
+
+</div>
+
+---
+
+## 📖 项目简介
+
+骚扰电话、营销电话和 AI 自动拨号越来越多，但“陌生号码一律拦截”又很容易误伤快递、医院、学校老师这类真正重要的电话。号码池技术也让单纯依靠黑名单越来越难。
+
+**CallGuard AI** 是一个分阶段开发的 Android 来电筛查项目，核心思路是：
+
+- 📵 **实时筛查完全在本地完成**：系统来电回调要求几秒内给出结果，所以由确定性的本地规则和风险评分在 **800ms 预算**内决定放行 / 静音 / 拦截，不等待网络、不调用大模型。
+- 🧠 **AI 只做“理解”，不直接执行动作**：大模型只输出结构化判断（意图、置信度、依据），最终动作由后端的明确阈值决定；模型调用失败或判断不了时，不会产生拦截决定。
+- 🔒 **隐私优先**：数据库里不保存原始号码（只保存设备密钥生成的 HMAC 标识），发送给 AI 的只有有限的数值特征，不含号码、联系人和通话内容。
+
+> [!NOTE]
+> 这是一个实验性项目，不是可上架的成品应用。下文的「项目进展」会区分**已经实测**和**尚未验证**的能力。
+
+---
+
+## 📱 手机端界面
+
+<!-- ============================================================
+     📷 手机截图位置（共 4 张）
+     上传方法：把截图放进 docs/images/，用下面的文件名覆盖占位图即可，
+     README 本身不用改。建议竖屏 PNG，宽度 1080 左右。
+       ① docs/images/android-home.png     首页（来电筛查角色授权）
+       ② docs/images/android-records.png  通话记录列表
+       ③ docs/images/android-detail.png   通话详情与反馈按钮
+       ④ docs/images/android-ai.png       通话后 AI 解释 / AI 设置
+     ⚠️ 上传前请确认截图里没有真实号码、联系人姓名或设备标识；
+        如有记录编号等信息，建议打码或用测试数据重新截图。
+     ============================================================ -->
+
+<table>
+  <tr>
+    <td align="center" width="25%"><img src="docs/images/android-home.png" alt="首页：来电筛查角色授权" width="200"><br><b>① 首页</b><br><sub>来电筛查角色授权</sub></td>
+    <td align="center" width="25%"><img src="docs/images/android-records.png" alt="通话记录列表" width="200"><br><b>② 通话记录</b><br><sub>放行 / 静音 / 拦截列表</sub></td>
+    <td align="center" width="25%"><img src="docs/images/android-detail.png" alt="通话详情与反馈" width="200"><br><b>③ 通话详情</b><br><sub>判断依据与用户反馈</sub></td>
+    <td align="center" width="25%"><img src="docs/images/android-ai.png" alt="通话后 AI 解释与设置" width="200"><br><b>④ AI 解释</b><br><sub>通话后 AI 解释与设置</sub></td>
+  </tr>
+</table>
+
+<!-- 📷 手机截图位置结束 -->
+
+---
+
+## 🖼️ 来电意图模拟台
+
+在真正接入电话语音之前，项目先用一个本机网页**文字模拟**“AI 接听 → 意图判断 → 同一来电者重拨”的完整闭环：你扮演来电者输入一句话，AI 回复并判断来意，后端据此给出模拟动作，再用同一虚构 ID 重拨验证规则是否生效。
+
+![来电意图模拟台截图](docs/images/text-call-demo.png)
+
+<sub>截图为 30 份虚构测试来电中的 `colleague-04`，AI 回复与判断来自评估记录中的真实模型输出。全部为虚构文字，不接入真实电话。</sub>
+
+**模拟动作的判定规则**（由后端决定，而不是模型自己选）：
+
+| 模型判断 | 模拟动作 |
 |---|---|
-| Android 来电筛查 | 角色授权、本地规则、ALLOW/SILENCE/BLOCK、记录和反馈；真机证据仅覆盖已记录的设备与场景 |
-| 通话后 AI 解释 | 可选的后端模型调用，不影响当次实时拦截结果 |
-| 文字模拟台 | 使用虚构 ID 演示问答、五分钟模拟放行、模拟拦截和复核；规则只保存在本机服务内存 |
-| Phone Link 语音链路 | 人工接听和双向通话已有实验；程序化音频接入与自动接听尚未打通 |
+| 正常来电，且置信度 ≥ 0.8 | ✅ 允许同一来电者 5 分钟内再拨 |
+| 明确风险，且置信度 ≥ 0.9 | ⛔ 加入模拟黑名单 |
+| 自称商家 / 来意不明 / 其他情况 | 🔍 交由用户复核 |
+| 第一轮来意不清 | 💬 追问一次（最多两轮） |
 
-快速体验文字模拟：在项目根目录运行 `.\scripts\start-text-call-demo.ps1`，打开 `http://127.0.0.1:8765/`。脚本读取本机 `.env` 中的模型配置，发送输入可能产生模型费用。请勿输入真实号码、验证码或私人信息。没有 `.env` 中的有效模型密钥时，可运行单元测试，但网页不能生成 AI 回复。
+### 30 份虚构来电评估
 
-临时规则按单调时钟到期，设备重启后失效；永久白名单保留。窗口与通话记录在响应后一起保存，进程被杀或写入失败仍可能缺少历史。当前标准模式、800ms 本地查询截止保护保持不变；新增 AI 解释位于独立的通话后操作中。WP-04 已有 OPPO 三动作各一通实测；WP-05 另有一通真实 TEMP_ALLOW → ALLOW（67ms）与 Room 落库证据。真机原始证据[仅保存在本机](docs/device-evidence/README.md)，不上传 GitHub；其余新版真机场景不据此推断通过。
+| 样本 | 数量 | 优化前来意判断正确 |
+|---|---:|---:|
+| 推销 | 10 | 10 |
+| 公司同事 | 5 | 4 |
+| 老朋友 | 5 | 4 |
+| 家人 | 10 | 10 |
+| **合计** | **30** | **28**（模拟动作 25/30，误触发黑名单 **0** 次） |
 
-## 文档入口
+**根据失败样本做的改进**：原来模型把“来意是否清楚”和“自称身份是否可信”混在一起——同事没报文档名、朋友没证明身份，就被降成低置信度。新版把 `intent`（来电目的）和 `claimed_relationship`（自称关系）拆开，并始终标记 `identity_verified=false`；只在来意不清时才追问。对原来失败的 5 份加 2 份代表样本定向复测，**来意、自称关系、模拟动作均 7/7**。
 
-- [30 份文字模拟来电、基线与优化后定向复测](docs/demo-evidence/text-call-evaluation-20260926.md)；本地网页：http://127.0.0.1:8765 （使用 scripts/start-text-call-demo.ps1 启动）。当前网页还提供“同一虚构来电者重拨”和事件时间线；五分钟放行、拦截和复核仅在本机进程内模拟，详见 [服务端说明](server/README.md)。
+> 新版没有重新跑完整 30 份，因此不宣称新版 30/30，也不代表真实电话准确率。详见 [完整评估与逐段对话](docs/demo-evidence/text-call-evaluation-20260926.md)。
 
-- [蓝牙接通与 AI 模块隔离首轮](docs/voice-bluetooth-initial.md) / [Voice 开发说明](voice/README.md)
+---
 
-- [V2 转接与 AI 语音验证路线（规划，未实现）](docs/voice-verification-roadmap.md)
+## ✨ 已实现的功能
 
-- [WP-07 接口、运行与验证](docs/wp07-implementation.md)
-- [WP-06 实施、测试与真机步骤](docs/wp06-implementation.md)
-- [WP-05 实施、窗口语义与验证](docs/wp05-implementation.md)
+### 📱 Android 端（Kotlin + Jetpack Compose）
 
-- [WP-04 实施与待完成真机验收](docs/wp04-implementation.md)
+- **系统来电筛查角色**：通过 `RoleManager.ROLE_CALL_SCREENING` 引导授权，回到前台时自动检测角色是否被其他应用替换
+- **本地优先级规则**：紧急联系人 → 通讯录 → 白名单 → 黑名单 → 用户确认诈骗 → 临时放行，命中即直接决定
+- **陌生号码风险评分**：根据近 24 小时拨打频率、历史拒接、用户标签等计算 0–100 分，三种保护等级（宽松 / 标准 / 严格）
+- **重复来电时间窗口**：同一号码 3 分钟内重拨视为可能有急事，适当降低风险分；临时放行按设备单调时钟计时，重启后失效
+- **通话记录与反馈**：分页记录、详情页，一键标记“正常 / 骚扰”或加入白 / 黑名单，反馈会影响下一次来电的判断
+- **通话后 AI 解释**（默认关闭）：用户确认通话结束后，可手动请求 AI 对这通电话给出解释，结果单独保存，不改写当次决策
 
-- [WP-03 规则实现、冲突处理与测试](docs/wp03-implementation.md)
+### 🖥️ 后端（Python + FastAPI）
 
-- [WP-02 实施、验证与阶段推进依据](docs/wp02-implementation.md)
+- **通话后解释接口** `POST /v1/explanations`：调用 DeepSeek 生成结构化解释，严格校验输出格式，重复请求直接复用结果、不重复计费
+- **模型工厂**：改 `.env` 即可切换 DeepSeek 或其他兼容 Chat Completions 协议的模型
+- **审计与限流**：PostgreSQL 保存审计记录，Redis 负责限流、幂等和短期缓存
+- **风险分析接口** `POST /v1/risk/analyze`：带超时和重试上限的接口骨架，目前返回中性结果，生产筛查默认不调用
+- **文字模拟台**：上面截图中的本机网页及 30 份虚构样本的批量评估工具
 
-- [范围审查与完成标准](docs/review.md)
-- [架构与逐文件职责](docs/architecture.md)
-- [MVP 边界决策](docs/decisions/0001-mvp-boundary.md)
-- [WP-01 诊断版私有证据与导出](docs/diagnostic-evidence.md)
-- [环境说明](docs/environment.md)
-- [构建测试记录](docs/validation.md)
-- [WP-01 当前剩余验收清单](docs/wp01-remaining-acceptance.md)
-- [真机验证步骤](docs/device-validation.md) / [设备矩阵](docs/device-matrix.md)
+---
 
-## 固定版本
+## 🏗️ 系统架构
 
-| 项目 | 版本 |
-|---|---|
-| JDK | Temurin 21.0.12.1；字节码目标 Java 17 |
-| Android Studio（命令行不依赖它） | 2026.1.3 / AI-261.26222.65.2613.15948027 |
-| Gradle / Android Gradle Plugin | 8.14.3 / 8.13.0 |
-| Kotlin / Compose compiler plugin | 2.0.21 / 2.0.21 |
-| Compose BOM / Activity Compose | 2024.12.01 / 1.10.0 |
-| Lifecycle | 2.8.7 |
-| Room / KAPT | 2.7.2 / 2.0.21 |
-| libphonenumber | 8.13.55 |
-| Android Test runner / ext JUnit | 1.6.2 / 1.2.1 |
-| SDK | min 29，compile/target 36，Build Tools 35.0.0 |
-| JUnit / Robolectric / Mockito | 4.13.2 / 4.14.1 / 5.14.2 |
-| Python | 3.12.10 |
-| FastAPI / httpx | 0.115.12 / 0.28.1（项目 .venv） |
-
-## 构建
-
-打开 android/ 可导入 Android Studio。需要上述 JDK、SDK，并联网访问 Google Maven、Maven Central、Gradle 官方仓库。无需全局安装 Gradle。
-
-```powershell
-cd F:\CallBlocking
-.\scripts\build.ps1 -JdkPath 'E:\Android\Jdk21' -SdkPath 'E:\Android\Sdk'
+```mermaid
+flowchart TD
+    A["📞 来电"] --> B["CallGuardScreeningService<br/>onScreenCall · 800ms 预算"]
+    B --> C["本地数据读取<br/>号码规范化 · 通讯录 · Room 名单/画像/历史"]
+    C --> D{"PolicyEngine<br/>优先级规则"}
+    D -->|通讯录 / 白名单 / 临时放行| ALLOW["✅ ALLOW 放行"]
+    D -->|黑名单 / 确认诈骗| BLOCK["⛔ BLOCK 拦截"]
+    D -->|陌生号码| E["RiskScoreCalculator<br/>0–100 风险分"]
+    E --> F{"保护等级"}
+    F -->|"< 40"| ALLOW
+    F -->|"40–69"| SILENCE["🔕 SILENCE 静音"]
+    F -->|"≥ 70 且 ≥ 2 项证据"| BLOCK
+    ALLOW & SILENCE & BLOCK --> G["respondToCall<br/>异步写入通话记录"]
+    G -.用户确认通话结束后.-> H["通话后 AI 解释<br/>FastAPI → DeepSeek"]
+    H -.-> I[("PostgreSQL 审计<br/>Redis 限流/幂等")]
 ```
 
-该脚本执行 :app:assembleDebug、:app:testDebugUnitTest、:app:lintDebug。只修改当前进程环境，结束恢复；缓存存放 .gradle-user-home/，JDK socket 临时文件使用 .tmp/。新机器传入实际安装路径，并更新或移除本机 android/local.properties。
+几个关键设计：
 
-- APK：android/app/build/outputs/apk/debug/app-debug.apk
-- 测试报告：android/app/build/reports/tests/testDebugUnitTest/index.html
-- lint：android/app/build/reports/lint-results-debug.html
+- **超时兜底**：数据库或通讯录卡住时，截止线程会按保护等级给出默认结果，晚到的结果不会被二次提交
+- **证据门槛**：分数再高，独立证据不足 2 项也只静音、不拦截，避免误伤
+- **AI 与实时链路隔离**：AI 不参与实时拦截；网络断开、模型失败或关闭 AI，都不影响本地筛查
 
-## Python 隔离
+### 风险评分（确定性基线，不是训练出的模型）
+
+| 因素 | 分值 |
+|---|---:|
+| 基础分 | +10 |
+| 陌生号码 | +10 |
+| 近 24 小时拨打次数 | 每次 +2（最多 +20） |
+| 曾被拒接 | +5 |
+| 用户标记为营销 / 骚扰 | +45 |
+| 3 分钟内重复来电 | −8 |
+| 用户主动回拨过 / 接听过至少两次 | −25 / −15 |
+| 用户标记为家人 | −60 |
+
+---
+
+## 🚦 项目进展
+
+项目按工作包（WP）逐步推进，每个阶段都有独立的实施与验证报告。
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| WP-01 | 来电筛查角色与系统回调探针 | ✅ 完成 |
+| WP-02 | Room 数据层、号码规范化与 HMAC 标识 | ✅ 完成 |
+| WP-03 | 纯本地规则引擎与风险评分 | ✅ 完成 |
+| WP-04 | 接入真实来电链路 | ✅ OPPO 真机 ALLOW / SILENCE / BLOCK 各一通实测 |
+| WP-05 | 重复来电窗口、临时放行 | ✅ 真机 TEMP_ALLOW → ALLOW（67ms）|
+| WP-06 | 通话记录、详情与用户反馈 | ✅ 真机骚扰反馈后再拨入：100ms 内 BLOCK |
+| WP-07 | 云端风险 API（带超时与重试上限） | ✅ 本机联调，生产默认不接入 |
+| WP-08 | 通话后 AI 解释与模型工厂 | ✅ 当前版本 `0.8.0-wp08` |
+| 实验 | 文字模拟来电台 + 30 份样本评估 | ✅ 完成 |
+| 实验 | Phone Link 语音链路 | 🧪 电脑端人工双向通话已验证；程序化音频与自动接听尚未打通 |
+| 规划 | AI 先接听电话（呼叫转移 + SIP + 语音 AI） | 📝 仅有[路线规划](docs/voice-verification-roadmap.md) |
+
+> [!IMPORTANT]
+> 真机证据目前只覆盖已记录的 OPPO 设备和场景，不等于跨机型验收通过。真机原始证据只保存在本机，不上传 GitHub。
+
+---
+
+## 🚀 快速开始
+
+### 1. 体验文字模拟台（最简单）
+
+需要 Windows + Python 3.12，以及一个 DeepSeek API Key。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirement.txt
+copy .env.example .env        # 填入 DEEPSEEK_API_KEY
+.\scripts\start-text-call-demo.ps1
 ```
 
-requirement.txt 引用 requirements.txt，requirements.lock.txt 锁定后端依赖。.venv 仅隔离 Python 包，不管理 Kotlin/JDK/SDK，不存长期配置或密钥。Android 本机路径在忽略提交的 local.properties；服务端由项目 .venv 运行，凭据位于忽略提交的 .env。
+浏览器打开 http://127.0.0.1:8765 。
 
-## 验收边界
+> [!WARNING]
+> 每次发送都会调用一次付费模型。请勿输入真实号码、验证码或其他私人信息。
 
-用户已明确允许以现有一组真实功能证据推进 WP-02，不再要求本阶段进行两家厂商各 10 通的重复采样。已有 OPPO 单通回调、ALLOW 提交和真实响铃证据；第二厂商、默认智能优化下的稳定性等仍待验证。该推进决定不等于跨机型验收通过。后续每个工作包保留基本功能测试，完成后等待确认。
+### 2. 构建 Android 应用
 
-WP-06 构建、143项单元测试、12项导出测试、2项独立数据库设备测试通过；真机升级4条历史记录及画像保持一致。已有一通真实骚扰反馈后SIM拨入证据：73分、100ms提交BLOCK，用户确认无界面/响铃/振动；测试标签已恢复并核对为NORMAL。尚未宣布全部阶段验收通过。
+需要 JDK 21 和 Android SDK（compile/target 36），无需全局安装 Gradle。
 
-WP-07服务启动：`.\scripts\start-risk-server.ps1 -StartInfrastructure`；真实存储测试：`.\scripts\test-risk-server.ps1 -Integration`。依赖安装仅使用项目.venv，.env保存本机配置，requirements.lock.txt锁定实装依赖。
+```powershell
+.\scripts\build.ps1 -JdkPath 'E:\Android\Jdk21' -SdkPath 'E:\Android\Sdk'
+```
+
+脚本会依次执行构建、单元测试和 lint，生成的 APK 位于 `android/app/build/outputs/apk/debug/app-debug.apk`。也可以直接用 Android Studio 打开 `android/` 目录。
+
+### 3. 启动后端服务（AI 解释 / 风险 API）
+
+需要 Docker（用于 PostgreSQL 和 Redis）。
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+.\scripts\start-risk-server.ps1 -StartInfrastructure
+# 另一个终端运行集成测试
+.\scripts\test-risk-server.ps1 -Integration
+```
+
+服务只监听 `127.0.0.1:8000`，接口文档在 `/docs`。
+
+### 运行测试
+
+```powershell
+# 后端与模拟台
+.\.venv\Scripts\python.exe -m pytest server\tests -q
+# 语音会话模块
+.\.venv\Scripts\python.exe -m pytest voice\tests -q
+```
+
+---
+
+## 📁 项目结构
+
+```text
+CallGuard-AI/
+├── android/                 # Android 应用（Kotlin + Compose）
+│   └── app/src/main/java/com/callguard/app/
+│       ├── screening/       # 系统来电回调、截止时间、线程调度
+│       ├── policy/          # 规则引擎与保护等级
+│       ├── risk/            # 风险特征提取与评分
+│       ├── data/            # Room 数据库（记录 / 画像 / 规则 / 反馈）
+│       ├── caller/          # 号码规范化与 HMAC 标识
+│       ├── feedback/        # 用户反馈处理
+│       ├── cloud/  ai/      # 云端风险接口 / 通话后 AI 解释客户端
+│       └── ui/              # 首页、记录列表、详情、AI 设置
+├── server/                  # FastAPI 后端
+│   ├── app/                 # 风险 API、AI 解释、模型工厂、存储
+│   ├── demo/                # 文字模拟台网页与 30 份样本评估
+│   └── tests/
+├── voice/                   # 语音通道实验（Phone Link / 音频探针）
+├── scripts/                 # 构建、启动、测试、真机证据采集脚本
+└── docs/                    # 各阶段实施报告、架构说明、评估记录
+```
+
+---
+
+## 🧰 技术栈
+
+| 领域 | 技术 |
+|---|---|
+| Android | Kotlin 2.0.21 · Jetpack Compose · Room 2.7.2 · libphonenumber · Android Keystore |
+| 测试 | JUnit 4 · Robolectric · Mockito · AndroidX Test · pytest |
+| 后端 | Python 3.12 · FastAPI · Pydantic · httpx |
+| 存储 | PostgreSQL（审计）· Redis（限流 / 幂等 / 缓存）· Docker Compose |
+| AI | DeepSeek（JSON 模式）· 可切换的 OpenAI 兼容模型工厂 |
+| 构建 | Gradle 8.14.3 · AGP 8.13.0 · JDK 21（目标 Java 17）· minSdk 29 / targetSdk 36 |
+
+---
+
+## 🔐 隐私与边界
+
+- **不保存原始号码**：数据库只存设备密钥生成的 HMAC 标识，规范化号码只在内存中使用
+- **AI 看不到号码和通话内容**：只发送有限的数值特征和策略版本
+- **密钥只在服务端**：模型 Key 保存在被 Git 忽略的 `.env`；手机端只保存后端访问密钥，并用 Android Keystore 加密
+- **不接听、不录音**：当前版本不做语音识别和语音合成，也不声称能识别诈骗
+- **真机证据不上传**：截图和日志可能包含真实号码与设备信息，只保存在本机
+
+---
+
+## 📚 文档
+
+| 文档 | 内容 |
+|---|---|
+| [产品计划书](CallGuard%20AI｜安卓智能来电拦截与来电意图分析软件产品计划书.md) | 背景、目标用户、整体规划 |
+| [架构与逐文件职责](docs/architecture.md) | 各阶段调用链与文件说明 |
+| [MVP 边界决策](docs/decisions/0001-mvp-boundary.md) | 第一阶段做什么、不做什么 |
+| [文字模拟评估](docs/demo-evidence/text-call-evaluation-20260926.md) | 30 份样本完整对话与优化过程 |
+| [服务端说明](server/README.md) | 后端与模拟台的运行方式 |
+| [语音模块说明](voice/README.md) · [语音验证路线](docs/voice-verification-roadmap.md) | Phone Link 实验与后续规划 |
+| WP 报告：[02](docs/wp02-implementation.md) · [03](docs/wp03-implementation.md) · [04](docs/wp04-implementation.md) · [05](docs/wp05-implementation.md) · [06](docs/wp06-implementation.md) · [07](docs/wp07-implementation.md) · [08](docs/wp08-implementation.md) | 各阶段实施、测试与真机记录 |
+| [环境说明](docs/environment.md) · [构建测试记录](docs/validation.md) · [真机验证步骤](docs/device-validation.md) · [设备矩阵](docs/device-matrix.md) | 开发与验证环境 |
